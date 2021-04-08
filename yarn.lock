@@ -183,6 +183,15 @@
     semver "^5.4.1"
     source-map "^0.5.0"
 
+"@babel/generator@>=7":
+  version "7.13.9"
+  resolved "https://registry.yarnpkg.com/@babel/generator/-/generator-7.13.9.tgz#3a7aa96f9efb8e2be42d38d80e2ceb4c64d8de39"
+  integrity sha512-mHOOmY0Axl/JCTkxTU6Lf5sWOg/v8nUa+Xkt4zMTftX0wqmb6Sh7J8gvcehBw7q0AhrhAR+FDacKjCZ2X8K+Sw==
+  dependencies:
+    "@babel/types" "^7.13.0"
+    jsesc "^2.5.1"
+    source-map "^0.5.0"
+
 "@babel/generator@^7.10.3", "@babel/generator@^7.12.13", "@babel/generator@^7.12.15", "@babel/generator@^7.4.0", "@babel/generator@^7.8.0":
   version "7.12.15"
   resolved "https://registry.yarnpkg.com/@babel/generator/-/generator-7.12.15.tgz#4617b5d0b25cc572474cc1aafee1edeaf9b5368f"
@@ -622,7 +631,7 @@
   dependencies:
     "@babel/helper-plugin-utils" "^7.12.13"
 
-"@babel/plugin-syntax-dynamic-import@^7.2.0", "@babel/plugin-syntax-dynamic-import@^7.7.4", "@babel/plugin-syntax-dynamic-import@^7.8.0", "@babel/plugin-syntax-dynamic-import@^7.8.3":
+"@babel/plugin-syntax-dynamic-import@>=7", "@babel/plugin-syntax-dynamic-import@^7.2.0", "@babel/plugin-syntax-dynamic-import@^7.7.4", "@babel/plugin-syntax-dynamic-import@^7.8.0", "@babel/plugin-syntax-dynamic-import@^7.8.3":
   version "7.8.3"
   resolved "https://registry.yarnpkg.com/@babel/plugin-syntax-dynamic-import/-/plugin-syntax-dynamic-import-7.8.3.tgz#62bf98b2da3cd21d626154fc96ee5b3cb68eacb3"
   integrity sha512-5gdGbFon+PszYzqs83S3E5mpi7/y/8M9eC90MRTZfduQOYW76ig6SOSPNe41IG5LoP3FGBn2N0RjVDSQiS94kQ==
@@ -1224,7 +1233,7 @@
   resolved "https://registry.yarnpkg.com/@babel/standalone/-/standalone-7.10.4.tgz#63b9e211bee42e8ba8dfc1c0b68a856150e37bf2"
   integrity sha512-Cgnx+Z7dYqQrz42GPGzDFTph8n15NogWuR9OpocOVlRZQoRw4q+OmudevYAd6CjOVjGu6PgvJwojxCE34cfXPg==
 
-"@babel/template@^7.12.13", "@babel/template@^7.12.7", "@babel/template@^7.4.0", "@babel/template@^7.8.0":
+"@babel/template@>=7", "@babel/template@^7.12.13", "@babel/template@^7.12.7", "@babel/template@^7.4.0", "@babel/template@^7.8.0":
   version "7.12.13"
   resolved "https://registry.yarnpkg.com/@babel/template/-/template-7.12.13.tgz#530265be8a2589dbb37523844c5bcb55947fb327"
   integrity sha512-/7xxiGA57xMo/P2GVvdEumr8ONhFOhfgq2ihK3h1e6THqzTAkHbkXgB0xI9yeTfIUoH3+oAeHhqm/I43OTbbjA==
@@ -2531,6 +2540,32 @@
   dependencies:
     npmlog "^4.1.2"
     write-file-atomic "^2.3.0"
+
+"@linaria/babel@^3.0.0-beta.0":
+  version "3.0.0-beta.0"
+  resolved "https://registry.yarnpkg.com/@linaria/babel/-/babel-3.0.0-beta.0.tgz#60ee6eb011017f918c4ebfe3ec66a44b20b1e40e"
+  integrity sha512-IA2P9Es8iIfc/p12riN+hHVxrjIzkQ2xcdb2s8Ltszz21WN2I39WubDjk+DOUQAgLNoKH2HsgX0wWnW9zT4Bgw==
+  dependencies:
+    "@babel/generator" ">=7"
+    "@babel/plugin-syntax-dynamic-import" ">=7"
+    "@babel/template" ">=7"
+    "@linaria/core" "^3.0.0-beta.0"
+    "@linaria/logger" "^3.0.0-beta.0"
+    cosmiconfig "^5.1.0"
+    source-map "^0.6.1"
+    stylis "^3.5.4"
+
+"@linaria/core@^3.0.0-beta.0":
+  version "3.0.0-beta.1"
+  resolved "https://registry.yarnpkg.com/@linaria/core/-/core-3.0.0-beta.1.tgz#bfacfd7922ed3844ae75db2979539a7cac4d8553"
+  integrity sha512-W8VGvO76PH1EnR26Gix6f0weMv/mBptz24euAo1vC8HahyUP/A9RAYyOPPs3C39iAbHPLiGWA/UtS/UoYQbDZA==
+
+"@linaria/logger@^3.0.0-beta.0":
+  version "3.0.0-beta.0"
+  resolved "https://registry.yarnpkg.com/@linaria/logger/-/logger-3.0.0-beta.0.tgz#f4b002466a68ca111c2ca84a44d04bd2690b70d7"
+  integrity sha512-gPfJox10U96au0S9AtnfT4ZIJUcvcWpc5N19/Vg2MnTmN+tI234I7e45YOi+3Mg3Qvo7pzG18SxVV/sFx8+xmg==
+  dependencies:
+    debug "^4.1.1"
 
 "@mdx-js/loader@^1.5.1":
   version "1.6.22"
@@ -4548,6 +4583,13 @@
   integrity sha512-NHcOfab3Zw4q5sEE2COkpfXjoE7o+PmqD9DQW4koUT3roNxwziUdXGnRndMat/LJNUtePwn1TlP4do3uoe3KZQ==
   dependencies:
     "@babel/types" "^7.0.0"
+
+"@types/babel__helper-plugin-utils@^7.10.0":
+  version "7.10.0"
+  resolved "https://registry.yarnpkg.com/@types/babel__helper-plugin-utils/-/babel__helper-plugin-utils-7.10.0.tgz#dcd2416f9c189d5837ab2a276368cf67134efe78"
+  integrity sha512-60YtHzhQ9HAkToHVV+TB4VLzBn9lrfgrsOjiJMtbv/c1jPdekBxaByd6DMsGBzROXWoIL6U3lEFvvbu69RkUoA==
+  dependencies:
+    "@types/babel__core" "*"
 
 "@types/babel__template@*":
   version "7.0.2"

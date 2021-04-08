@@ -1,11 +1,11 @@
-import { NodePath, PluginObj } from '@babel/core';
+import { NodePath } from '@babel/core';
+import * as babel from '@babel/core';
+import { declare } from '@babel/helper-plugin-utils';
 import * as t from '@babel/types';
 import { resolveStyleRules } from '@fluentui/make-styles';
 
 import { astify } from './utils/astify';
-
-type BabelPluginOptions = { types: typeof t };
-type BabelPlugin = (a: BabelPluginOptions) => PluginObj;
+import { Evaluator, Module, StrictOptions } from '@linaria/babel';
 
 function isMakeStylesCallExpression(expressionPath: NodePath<t.CallExpression>): boolean {
   const callee = expressionPath.get('callee');
@@ -21,12 +21,135 @@ function isMakeStylesCallExpression(expressionPath: NodePath<t.CallExpression>):
   return false;
 }
 
-const babelPlugin: BabelPlugin = () => {
+function getMemberExpressionIdentifier(expressionPath: NodePath<t.MemberExpression>): NodePath<t.Identifier> {
+  const objectPath = expressionPath.get('object');
+
+  if (objectPath.isIdentifier()) {
+    return objectPath;
+  }
+
+  if (objectPath.isMemberExpression()) {
+    return getMemberExpressionIdentifier(objectPath);
+  }
+
+  throw new Error('!!!');
+}
+
+function getMemberExpressionNames(expressionPath: NodePath<t.MemberExpression>, result: string[] = []): string[] {
+  const objectPath = expressionPath.get('object');
+  const propertyPath = expressionPath.get('property');
+
+  if (objectPath.isIdentifier()) {
+    // NOT THERE
+  } else if (objectPath.isMemberExpression()) {
+    getMemberExpressionNames(objectPath, result);
+  } else {
+    throw new Error('!!!');
+  }
+
+  if (propertyPath.isIdentifier()) {
+    result.push(propertyPath.node.name);
+  }
+
+  return result;
+}
+
+function namesToCssVariable(names: string[]): string {
+  let variable = '';
+
+  for (let i = 0; i < names.length; i++) {
+    if (i === 0) {
+      variable += `var(--${names[i]}`;
+    } else {
+      variable += `-${names[i]}`;
+    }
+  }
+
+  return `${variable})`;
+}
+
+const evaluator: Evaluator = (filename, options, text) => {
+  const { code } = babel.transformSync(text, {
+    filename: filename,
+  })!;
+  return [code!, null];
+};
+
+function evaluate(code: string, f: string) {
+  const options: StrictOptions = {
+    displayName: false,
+    evaluate: true,
+
+    rules: [
+      {
+        action: evaluator,
+      },
+      {
+        test: /\/node_modules\//,
+        action: 'ignore',
+      },
+    ],
+    babelOptions: {},
+  };
+  const filename = '/foo/bar/test.js';
+  const mod = new Module(filename, options);
+
+  mod.evaluate('module.exports = () => 42');
+
+  console.log(mod.exports());
+}
+
+function extracted(stylesPath: NodePath<t.ObjectExpression>) {
+  const result = stylesPath.evaluate();
+
+  if (!result.confident) {
+    console.log(result);
+    console.log(evaluate(`module.exports = () => 42`, '/foo/bar/test.js'));
+    throw new Error('Oops');
+  }
+
+  const resolvedStyles = resolveStyleRules(result.value);
+  const resolvedStylesAst = astify(resolvedStyles);
+
+  stylesPath.replaceWith(resolvedStylesAst);
+}
+
+export const babelPlugin = declare<{ ooo: any }>(api => {
+  api.assertVersion(7);
+
   return {
     name: '@fluentui/babel-make-styles',
 
     visitor: {
-      CallExpression(expressionPath, state) {
+      Program: {
+        exit(path, state) {
+          if (state.ooo) {
+            state.ooo.replaceWith(t.identifier('prebuildStyles'));
+          }
+        },
+      },
+
+      ImportDeclaration(expressionPath, state) {
+        const source = expressionPath.get('source');
+
+        if (source.isStringLiteral({ value: '@fluentui/react-make-styles' })) {
+          const specifiers = expressionPath.get('specifiers');
+
+          specifiers.forEach(specifier => {
+            if (specifier.isImportSpecifier()) {
+              const imported = specifier.get('imported');
+
+              if (imported.isIdentifier({ name: 'makeStyles' })) {
+                state.ooo = specifier;
+              }
+            }
+          });
+
+          console.log('!!!');
+        }
+      },
+
+      CallExpression(expressionPath) {
         if (!isMakeStylesCallExpression(expressionPath)) {
           return;
         }
@@ -37,6 +160,10 @@ const babelPlugin: BabelPlugin = () => {
         if (!hasValidArgument) {
           throw new Error();
         }
+
+        const callee = expressionPath.get('callee');
+
+        callee.replaceWith(t.identifier('prebuildStyles'));
 
         const definitionsPath = expressionPath.get('arguments.0') as NodePath<t.Node>;
 
@@ -54,16 +181,7 @@ const babelPlugin: BabelPlugin = () => {
           const stylesPath = styleSlot.get('value');
 
           if (stylesPath.isObjectExpression()) {
-            const result = stylesPath.evaluate();
-
-            if (!result.confident) {
-              throw new Error('111');
-            }
-            const resolvedStyles = resolveStyleRules(result.value);
-            const resolvedStylesAst = astify(resolvedStyles);
-            // console.log(resolvedStyles, resolvedStylesAst);
-
-            stylesPath.replaceWith(resolvedStylesAst);
+            extracted(stylesPath);
             return;
           }
 
@@ -71,7 +189,7 @@ const babelPlugin: BabelPlugin = () => {
             if (stylesPath.get('params').length === 0) {
               // skip
             } else if (stylesPath.get('params').length > 1) {
-              // throw
+              throw new Error('111');
             } else {
               const paramsPath = stylesPath.get('params.0') as NodePath<t.Node>;
 
@@ -94,17 +212,34 @@ const babelPlugin: BabelPlugin = () => {
                   throw new Error('111');
                 }
 
-                // const m = new Module(filename, options);
-                //
-                // m.dependencies = [];
-                // m.evaluate(code, ['__linariaPreval']);
+                const valuePath = property.get('value');
 
-                console.log(paramsName, state);
+                if (valuePath.isStringLiteral() || valuePath.isNullLiteral() || valuePath.isNumericLiteral()) {
+                  return;
+                }
+
+                if (valuePath.isMemberExpression()) {
+                  const identifierPath = getMemberExpressionIdentifier(valuePath);
+
+                  if (identifierPath.isIdentifier({ name: paramsName })) {
+                    const cssVariable = namesToCssVariable(getMemberExpressionNames(valuePath));
+
+                    valuePath.replaceWith(t.stringLiteral(cssVariable));
+                  }
+
+                  return;
+                }
+
+                if (valuePath.isArrayExpression()) {
+                  throw new Error();
+                }
+
+                throw new Error();
               });
 
-              // has tokens
+              stylesPath.replaceWith(bodyPath);
+              extracted(stylesPath);
 
-              // console.log(stylesPath.node);
               return;
             }
           }
@@ -112,6 +247,6 @@ const babelPlugin: BabelPlugin = () => {
       },
     },
   };
-};
+});
 
 export default babelPlugin;

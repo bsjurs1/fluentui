@@ -5,4 +5,7 @@ export const useStyles = makeStyles({
     color: 'red',
     padding: '4px',
   },
+  rootPrimary: {
+    color: 'blue',
+  },
 });

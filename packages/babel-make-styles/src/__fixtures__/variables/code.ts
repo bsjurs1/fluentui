@@ -1,10 +1,7 @@
 import { makeStyles } from '@fluentui/react-make-styles';
+
+const redColor = 'red';
+
 export const useStyles = makeStyles({
-  root: {
-    color: 'red',
-    padding: '4px',
-  },
-  rootPrimary: {
-    color: 'blue',
-  },
+  root: { color: redColor },
 });

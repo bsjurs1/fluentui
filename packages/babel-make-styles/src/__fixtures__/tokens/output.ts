@@ -1,10 +1,8 @@
-import { makeStyles } from '@fluentui/react-make-styles';
-export const useStyles = makeStyles({
+import { prebuildStyles } from '@fluentui/react-make-styles';
+export const useStyles = prebuildStyles({
   root: {
-    color: ['', 'fe3e8s90', '.fe3e8s90{color:red;}'],
-    paddingTop: ['', 'f10ra9hq', '.f10ra9hq{padding-top:4px;}'],
-    paddingRight: ['', 'f8wuabp0', '.f8wuabp0{padding-right:4px;}', '.rf8wuabp0{padding-left:4px;}'],
-    paddingBottom: ['', 'f1y2xyjm', '.f1y2xyjm{padding-bottom:4px;}'],
-    paddingLeft: ['', 'fycuoez0', '.fycuoez0{padding-left:4px;}', '.rfycuoez0{padding-right:4px;}'],
+    backgroundColor: ['', 'fbrlg6g0', '.fbrlg6g0{background-color:var(--global-color-black);}'],
+    color: ['', 'fk38h1u0', '.fk38h1u0{color:var(--alias-color-blue-border2);}'],
+    display: ['', 'f22iagw0', '.f22iagw0{display:-webkit-box;display:-webkit-flex;display:-ms-flexbox;display:flex;}'],
   },
 });
