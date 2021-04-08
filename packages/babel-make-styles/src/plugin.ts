@@ -1,4 +1,6 @@
 import { NodePath } from '@babel/core';
+import generator from '@babel/generator';
+import { expression, statement } from '@babel/template';
 import * as babel from '@babel/core';
 import { declare } from '@babel/helper-plugin-utils';
 import * as t from '@babel/types';
@@ -71,9 +73,60 @@ function namesToCssVariable(names: string[]): string {
 const evaluator: Evaluator = (filename, options, text) => {
   const { code } = babel.transformSync(text, {
     filename: filename,
+    presets: ['@babel/preset-env'],
   })!;
   return [code!, null];
 };
+
+function findFreeName(scope: Scope, name: string): string {
+  // By default `name` is used as a name of the function …
+  let nextName = name;
+  let idx = 0;
+  while (scope.hasBinding(nextName, false)) {
+    // … but if there is an already defined variable with this name …
+    // … we are trying to use a name like wrap_N
+    idx += 1;
+    nextName = `wrap_${idx}`;
+  }
+
+  return nextName;
+}
+
+function hoist(babel: Core, ex: NodePath<t.Expression | null>) {
+  const Identifier = (idPath: NodePath<t.IdentifierNode>) => {
+    if (!idPath.isReferencedIdentifier()) {
+      return;
+    }
+
+    const binding = idPath.scope.getBinding(idPath.node.name);
+    if (!binding) return;
+    const { scope, path: bindingPath, referencePaths } = binding;
+    // parent here can be null or undefined in different versions of babel
+    if (!scope.parent) {
+      // It's a variable from global scope
+      return;
+    }
+
+    if (bindingPath.isVariableDeclarator()) {
+      const initPath = bindingPath.get('init') as NodePath<t.Expression | null>;
+      hoist(babel, initPath);
+      initPath.hoist(scope);
+      if (initPath.isIdentifier()) {
+        referencePaths.forEach(referencePath => {
+          referencePath.replaceWith(babel.types.identifier(initPath.node.name));
+        });
+      }
+    }
+  };
+
+  if (ex.isIdentifier()) {
+    return Identifier(ex);
+  }
+
+  ex.traverse({
+    Identifier,
+  });
+}
 
 function evaluate(code: string, f: string) {
   const options: StrictOptions = {
@@ -91,21 +144,65 @@ function evaluate(code: string, f: string) {
     ],
     babelOptions: {},
   };
-  const filename = '/foo/bar/test.js';
-  const mod = new Module(filename, options);
+  const mod = new Module(f, options);
+  mod.evaluate(code, ['__linariaPreval']);
 
-  mod.evaluate('module.exports = () => 42');
-
-  console.log(mod.exports());
+  return mod.exports['__linariaPreval'];
 }
 
-function extracted(stylesPath: NodePath<t.ObjectExpression>) {
+const expressionWrapperTpl = statement(`
+  const %%wrapName%% = (fn) => {
+    try {
+      return fn();
+    } catch (e) {
+      return e;
+    }
+  };
+`);
+
+const expressionTpl = expression(`%%wrapName%%(() => %%expression%%)`);
+const exportsLinariaPrevalTpl = statement(`exports.__linariaPreval = %%expressions%%`);
+
+function addLinariaPreval(path: NodePath<Program>, lazyDeps: Array<Expression | string>): Program {
+  // Constant __linariaPreval with all dependencies
+  const wrapName = findFreeName(path.scope, '_wrap');
+
+  const statements = [
+    expressionWrapperTpl({ wrapName }),
+    exportsLinariaPrevalTpl({
+      expressions: t.arrayExpression(lazyDeps.map(expression => expressionTpl({ expression, wrapName }))),
+    }),
+  ];
+
+  const programNode = path.node;
+  return t.program(
+    [...programNode.body, ...statements],
+    programNode.directives,
+    programNode.sourceType,
+    programNode.interpreter,
+  );
+}
+
+function extracted(stylesPath: NodePath<t.ObjectExpression>, p: NodePath<t.Program>, f) {
   const result = stylesPath.evaluate();
 
   if (!result.confident) {
-    console.log(result);
-    console.log(evaluate(`module.exports = () => 42`, '/foo/bar/test.js'));
-    throw new Error('Oops');
+    hoist(babel, stylesPath as NodePath<t.Expression | null>);
+    const hoistedExNode = t.cloneNode(stylesPath.node);
+
+    console.log(generator(hoistedExNode).code);
+
+    const p1 = addLinariaPreval(p, [hoistedExNode]);
+    const { code } = generator(p1);
+
+    console.log('222', code);
+
+    const results = evaluate(code, f);
+    stylesPath.replaceWith(astify(resolveStyleRules(results[0])));
+    console.log('33', results[0], generator(astify(resolveStyleRules(results[0]))).code);
+    // throw new Error('Oops');
+
+    return;
   }
 
   const resolvedStyles = resolveStyleRules(result.value);
@@ -126,6 +223,12 @@ export const babelPlugin = declare<{ ooo: any }>(api => {
           if (state.ooo) {
             state.ooo.replaceWith(t.identifier('prebuildStyles'));
           }
+
+          if (state.ppp.length > 0) {
+            state.ppp.forEach(callee => {
+              callee.replaceWith(t.identifier('prebuildStyles'));
+            });
+          }
         },
       },
 
@@ -144,16 +247,15 @@ export const babelPlugin = declare<{ ooo: any }>(api => {
               }
             }
           });
-
-          console.log('!!!');
         }
       },
 
-      CallExpression(expressionPath) {
+      CallExpression(expressionPath, state) {
         if (!isMakeStylesCallExpression(expressionPath)) {
           return;
         }
 
+        const p = expressionPath.findParent(p => p.isProgram());
         const args = expressionPath.get('arguments');
         const hasValidArgument = Array.isArray(args) && args.length === 1;
 
@@ -161,9 +263,8 @@ export const babelPlugin = declare<{ ooo: any }>(api => {
           throw new Error();
         }
 
-        const callee = expressionPath.get('callee');
-
-        callee.replaceWith(t.identifier('prebuildStyles'));
+        state.ppp = state.ppp || [];
+        state.ppp.push(expressionPath.get('callee'));
 
         const definitionsPath = expressionPath.get('arguments.0') as NodePath<t.Node>;
 
@@ -181,7 +282,7 @@ export const babelPlugin = declare<{ ooo: any }>(api => {
           const stylesPath = styleSlot.get('value');
 
           if (stylesPath.isObjectExpression()) {
-            extracted(stylesPath);
+            extracted(stylesPath, p, state.file.opts.filename);
             return;
           }
 
@@ -238,7 +339,7 @@ export const babelPlugin = declare<{ ooo: any }>(api => {
               });
 
               stylesPath.replaceWith(bodyPath);
-              extracted(stylesPath);
+              extracted(stylesPath, p, state.file.opts.filename);
 
               return;
             }

@@ -1,7 +1,10 @@
 import { prebuildStyles } from '@fluentui/react-make-styles';
-const redColor = 'red';
+import { greenColor, redColor } from './consts';
 export const useStyles = prebuildStyles({
-  root: {
+  red: {
     color: ['', 'fe3e8s90', '.fe3e8s90{color:red;}'],
+  },
+  green: {
+    color: ['', 'fka9v860', '.fka9v860{color:green;}'],
   },
 });
