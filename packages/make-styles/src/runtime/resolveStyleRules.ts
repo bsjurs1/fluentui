@@ -62,8 +62,13 @@ export function resolveStyleRules(
         rtlProperty: flippedInRtl ? rtlDefinition.key : undefined,
         rtlValue: flippedInRtl ? rtlDefinition.value : undefined,
       });
+      const resolvedRule: MakeStylesResolvedRule = [getStyleBucketName(pseudo, media, support), className, ltrCSS];
 
-      result[key] = [getStyleBucketName(pseudo, media, support), className, ltrCSS, rtlCSS];
+      if (rtlCSS) {
+        resolvedRule.push(rtlCSS);
+      }
+
+      result[key] = resolvedRule;
     } else if (property === 'animationName') {
       const animationNames = Array.isArray(value) ? value : [value];
       let keyframeCSS = '';

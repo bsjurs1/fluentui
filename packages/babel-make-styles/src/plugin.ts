@@ -40,28 +40,31 @@ const babelPlugin: BabelPlugin = () => {
 
         const definitionsPath = expressionPath.get('arguments.0') as NodePath<t.Node>;
 
-        if (!definitionsPath.isArrayExpression()) {
+        if (!definitionsPath.isObjectExpression()) {
           throw new Error();
         }
 
-        const elements = definitionsPath.get('elements');
+        const styleSlots = definitionsPath.get('properties');
 
-        elements.forEach((elementPath: NodePath<t.ArrayExpression>) => {
-          if (!elementPath.isArrayExpression()) {
+        styleSlots.forEach(styleSlot => {
+          if (!styleSlot.isObjectProperty()) {
             throw new Error();
           }
 
-          const elements = elementPath.get('elements');
+          const stylesPath = styleSlot.get('value');
 
-          if (elements.length !== 2) {
-            throw new Error('111');
-          }
+          if (stylesPath.isObjectExpression()) {
+            const result = stylesPath.evaluate();
 
-          const selectorPath = elements[0];
-          const stylesPath = elements[1];
+            if (!result.confident) {
+              throw new Error('111');
+            }
+            const resolvedStyles = resolveStyleRules(result.value);
+            const resolvedStylesAst = astify(resolvedStyles);
+            // console.log(resolvedStyles, resolvedStylesAst);
 
-          if (!selectorPath.isNullLiteral() && !selectorPath.isFunctionExpression()) {
-            throw new Error('111');
+            stylesPath.replaceWith(resolvedStylesAst);
+            return;
           }
 
           if (stylesPath.isArrowFunctionExpression()) {
@@ -102,25 +105,8 @@ const babelPlugin: BabelPlugin = () => {
               // has tokens
 
               // console.log(stylesPath.node);
+              return;
             }
-          } else if (stylesPath.isObjectExpression()) {
-            // const m = new Module(state.file.opts.filename, {});
-            //
-            // m.dependencies = [];
-            // const message = m.evaluate(``, []);
-            const result = stylesPath.evaluate();
-
-            if (!result.confident) {
-              throw new Error('111');
-            }
-            const resolvedStyles = resolveStyleRules(result.value);
-            const resolvedStylesAst = astify(resolvedStyles);
-            // console.log(resolvedStyles, resolvedStylesAst);
-
-            stylesPath.replaceWith(t.nullLiteral());
-            elementPath.pushContainer('elements', resolvedStylesAst);
-          } else {
-            throw new Error();
           }
         });
       },

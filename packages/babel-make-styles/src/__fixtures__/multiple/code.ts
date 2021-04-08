@@ -1,4 +1,4 @@
-import { makeStyles } from '@fluentui/make-styles';
+import { makeStyles } from '@fluentui/react-make-styles';
 export const useStyles = makeStyles({
   root: {
     color: 'red',
