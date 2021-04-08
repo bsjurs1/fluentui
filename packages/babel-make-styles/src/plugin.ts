@@ -1,9 +1,8 @@
 import { NodePath, PluginObj } from '@babel/core';
 import * as t from '@babel/types';
-import { Module } from '@linaria/babel';
+import { resolveStyleRules } from '@fluentui/make-styles';
 
-import { resolveStyleRules } from '../runtime/resolveStyleRules';
-import { astify } from './astify';
+import { astify } from './utils/astify';
 
 type BabelPluginOptions = { types: typeof t };
 type BabelPlugin = (a: BabelPluginOptions) => PluginObj;
@@ -12,7 +11,7 @@ function isMakeStylesCallExpression(expressionPath: NodePath<t.CallExpression>):
   const callee = expressionPath.get('callee');
 
   if (callee.isIdentifier()) {
-    if (callee.referencesImport('@fluentui/make-styles', 'makeStyles')) {
+    if (callee.referencesImport('@fluentui/react-make-styles', 'makeStyles')) {
       return true;
     }
 
@@ -24,7 +23,7 @@ function isMakeStylesCallExpression(expressionPath: NodePath<t.CallExpression>):
 
 const babelPlugin: BabelPlugin = () => {
   return {
-    name: '@fluentui/make-styles/babel',
+    name: '@fluentui/babel-make-styles',
 
     visitor: {
       CallExpression(expressionPath, state) {
@@ -39,7 +38,7 @@ const babelPlugin: BabelPlugin = () => {
           throw new Error();
         }
 
-        const definitionsPath = expressionPath.get('arguments.0');
+        const definitionsPath = expressionPath.get('arguments.0') as NodePath<t.Node>;
 
         if (!definitionsPath.isArrayExpression()) {
           throw new Error();
@@ -55,14 +54,14 @@ const babelPlugin: BabelPlugin = () => {
           const elements = elementPath.get('elements');
 
           if (elements.length !== 2) {
-            throw new Error(111);
+            throw new Error('111');
           }
 
           const selectorPath = elements[0];
           const stylesPath = elements[1];
 
           if (!selectorPath.isNullLiteral() && !selectorPath.isFunctionExpression()) {
-            throw new Error(111);
+            throw new Error('111');
           }
 
           if (stylesPath.isArrowFunctionExpression()) {
@@ -71,10 +70,10 @@ const babelPlugin: BabelPlugin = () => {
             } else if (stylesPath.get('params').length > 1) {
               // throw
             } else {
-              const paramsPath = stylesPath.get('params.0');
+              const paramsPath = stylesPath.get('params.0') as NodePath<t.Node>;
 
               if (!paramsPath.isIdentifier()) {
-                throw new Error(1);
+                throw new Error('111');
               }
 
               const paramsName: string = paramsPath.get('name').node;
@@ -82,14 +81,14 @@ const babelPlugin: BabelPlugin = () => {
               const bodyPath = stylesPath.get('body');
 
               if (!bodyPath.isObjectExpression()) {
-                throw new Error(111);
+                throw new Error('111');
               }
 
               const properties = bodyPath.get('properties');
 
-              properties.forEach((property) => {
+              properties.forEach(property => {
                 if (!property.isObjectProperty()) {
-                  throw new Error(111);
+                  throw new Error('111');
                 }
 
                 // const m = new Module(filename, options);
@@ -112,7 +111,7 @@ const babelPlugin: BabelPlugin = () => {
             const result = stylesPath.evaluate();
 
             if (!result.confident) {
-              throw new Error(111);
+              throw new Error('111');
             }
             const resolvedStyles = resolveStyleRules(result.value);
             const resolvedStylesAst = astify(resolvedStyles);

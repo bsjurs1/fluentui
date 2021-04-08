@@ -4,4 +4,6 @@ export { ax } from './ax';
 export { makeStaticStyles } from './makeStaticStyles';
 export { makeStyles } from './makeStyles';
 
+export { resolveStyleRules } from './runtime/resolveStyleRules';
+
 export * from './types';

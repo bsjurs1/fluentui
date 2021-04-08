@@ -6,7 +6,7 @@ type Tokens = {
 export const styles = makeStyles<never, Tokens>([
   [
     null,
-    (tokens) => ({
+    tokens => ({
       backgroundColor: tokens.colorGreen,
       color: tokens.colorRed,
       display: 'flex',

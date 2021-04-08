@@ -6,6 +6,7 @@ export function astify<T>(literal: T) {
   if (literal === null) {
     return t.nullLiteral();
   }
+
   switch (typeof literal) {
     case 'function':
       const ast = babylon.parse(literal.toString(), {
@@ -27,10 +28,10 @@ export function astify<T>(literal: T) {
       }
       return t.objectExpression(
         Object.keys(literal)
-          .filter((k) => {
+          .filter(k => {
             return typeof literal[k] !== 'undefined';
           })
-          .map((k) => {
+          .map(k => {
             return t.objectProperty(t.stringLiteral(k), astify(literal[k]));
           }),
       );
