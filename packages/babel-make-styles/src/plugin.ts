@@ -202,8 +202,31 @@ function extracted(stylesPath: NodePath<t.ObjectExpression>, p: NodePath<t.Progr
     console.log('222', code);
 
     const results = evaluate(code, f);
-    stylesPath.replaceWith(astify(resolveStyleRules(results[0])));
-    console.log('33', results[0], generator(astify(resolveStyleRules(results[0]))).code);
+    const result1 = results[0];
+
+    let resolveStyleRules1;
+
+    if (stylesPath.isSpreadElement()) {
+      resolveStyleRules1 = {};
+      Object.keys(result1).forEach(k => {
+        resolveStyleRules1[k] = resolveStyleRules(result1[k]);
+      });
+    } else {
+      resolveStyleRules1 = resolveStyleRules(result1);
+    }
+
+    const replacement = astify(resolveStyleRules1);
+
+    console.log('extracted:result1', result1);
+    console.log('extracted:replacement', replacement);
+    console.log('extracted:resolveStyleRules1', resolveStyleRules1);
+    console.log('extracted:code', generator(replacement).code);
+
+    if (stylesPath.isSpreadElement()) {
+      stylesPath.replaceWithMultiple(replacement.properties);
+    } else {
+      stylesPath.replaceWith(replacement);
+    }
     // throw new Error('Oops');
 
     return;
@@ -313,6 +336,7 @@ export const babelPlugin = declare<never, Babel.PluginObj<BabelPluginState>>(api
 
             if (stylesPath.isIdentifier()) {
               extracted(stylesPath, p, state.file.opts.filename);
+              return;
             }
 
             if (stylesPath.isArrowFunctionExpression()) {
