@@ -5,16 +5,13 @@ import { Module } from '@linaria/babel';
 import { evaluatePaths } from './utils/evaluatePaths';
 import { MakeStyles, resolveStyleRules } from '@fluentui/make-styles';
 import { astify } from './utils/astify';
+import generator from '@babel/generator';
 
 function isMakeStylesCallExpression(expressionPath: NodePath<t.CallExpression>): boolean {
   const callee = expressionPath.get('callee');
 
   if (callee.isIdentifier()) {
-    if (callee.referencesImport('@fluentui/react-make-styles', 'makeStyles')) {
-      return true;
-    }
-
-    return false;
+    return callee.referencesImport('@fluentui/react-make-styles', 'makeStyles');
   }
 
   return false;
@@ -72,10 +69,10 @@ type AstStyleNode =
   | {
       kind: 'LAZY_OBJECT';
       nodePath: NodePath<t.ObjectExpression>;
-      propertyPaths: NodePath<t.Expression>[];
-      spreadPaths: NodePath<t.SpreadElement>[];
+      lazyPaths: NodePath<t.Expression | t.SpreadElement>[];
     }
-  | { kind: 'LAZY_IDENTIFIER'; nodePath: NodePath<t.Identifier> };
+  | { kind: 'LAZY_IDENTIFIER'; nodePath: NodePath<t.Identifier> }
+  | { kind: 'SPREAD'; nodePath: NodePath<t.SpreadElement>; spreadPath: NodePath<t.SpreadElement> };
 
 type BabelPluginState = PluginPass & {
   importDeclarationPath?: NodePath<t.ImportDeclaration>;
@@ -107,16 +104,20 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
           }
 
           const pathsToEvaluate = state.styleNodes!.reduce<NodePath<any>[]>((acc, styleNode) => {
-            if (styleNode.kind === 'PURE_OBJECT') {
-              return acc;
-            }
-
             if (styleNode.kind === 'LAZY_IDENTIFIER') {
               return [...acc, styleNode.nodePath];
             }
 
             if (styleNode.kind === 'LAZY_OBJECT') {
-              return [...acc, ...styleNode.propertyPaths, ...styleNode.spreadPaths];
+              return [...acc, ...styleNode.lazyPaths];
+            }
+
+            if (styleNode.kind === 'PURE_OBJECT') {
+              return acc;
+            }
+
+            if (styleNode.kind === 'SPREAD') {
+              return [...acc, styleNode.spreadPath];
             }
 
             throw new Error(/* TODO */);
@@ -127,16 +128,45 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
           }
 
           state.styleNodes?.forEach(styleNode => {
-            const evaluationResult = styleNode.nodePath.evaluate();
+            const nodePath = styleNode.nodePath;
+
+            if (styleNode.kind === 'SPREAD') {
+              const evaluationResult = nodePath.get('argument').evaluate();
+
+              if (!evaluationResult.confident) {
+                console.log('styleNode.kind', styleNode.kind);
+                console.log('code', generator(path.node).code);
+                // console.log('r', evaluationResult);
+                console.log('node', nodePath.node);
+                throw new Error(/* TODO */);
+              }
+
+              const stylesBySlots: Record<string, MakeStyles> = evaluationResult.value;
+              const resolvedStyles = {};
+
+              Object.keys(stylesBySlots).forEach(slotName => {
+                resolvedStyles[slotName] = resolveStyleRules(stylesBySlots[slotName]);
+              });
+              console.log(resolvedStyles);
+              nodePath.replaceWithMultiple(astify(resolvedStyles).properties);
+
+              return;
+            }
+
+            const evaluationResult = nodePath.evaluate();
 
             if (!evaluationResult.confident) {
+              console.log('styleNode.kind', styleNode.kind);
+              console.log('code', generator(path.node).code);
+              // console.log('r', evaluationResult);
+              console.log('node', nodePath.node);
               throw new Error(/* TODO */);
             }
 
             const styles: MakeStyles = evaluationResult.value;
             const resolvedStyles = resolveStyleRules(styles);
 
-            styleNode.nodePath.replaceWith(astify(resolvedStyles));
+            nodePath.replaceWith(astify(resolvedStyles));
           });
 
           const specifiers = state.importDeclarationPath.get('specifiers');
@@ -195,9 +225,29 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
 
         const styleSlots = definitionsPath.get('properties');
 
-        styleSlots.forEach(styleSlot => {
-          if (styleSlot.isObjectProperty()) {
-            const stylesPath = styleSlot.get('value');
+        styleSlots.forEach(styleSlotPath => {
+          /**
+           * Needs context-aware lazy evaluation anyway.
+           *
+           * @example makeStyles({ ...SOME_STYLES })
+           */
+          if (styleSlotPath.isSpreadElement()) {
+            const spreadArgument = styleSlotPath.get('argument');
+            const clone = t.cloneNode(spreadArgument.node);
+            const wrappingSpreadArgument = t.objectExpression([t.spreadElement(clone)]);
+
+            spreadArgument.replaceWith(wrappingSpreadArgument);
+
+            state.styleNodes?.push({
+              kind: 'SPREAD',
+              nodePath: styleSlotPath,
+              spreadPath: styleSlotPath.get('argument.properties.0'),
+            });
+            return;
+          }
+
+          if (styleSlotPath.isObjectProperty()) {
+            const stylesPath = styleSlotPath.get('value');
 
             /**
              * Needs context-aware lazy evaluation anyway.
@@ -212,11 +262,17 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
               return;
             }
 
+            /**
+             * May need context-aware lazy evaluation in less optimistic scenarios.
+             *
+             * @example
+             *    makeStyles({ root: { color: 'red' } })
+             *    makeStyles({ root: { color: SOME_VARIABLE } })
+             *    makeStyles({ ...sharedStyles })
+             */
             if (stylesPath.isObjectExpression()) {
               const propertiesPaths = stylesPath.get('properties');
-
-              const lazyProperties: NodePath<t.Expression>[] = [];
-              const lazySpreads: NodePath<t.SpreadElement>[] = [];
+              const lazyPaths: NodePath<t.Expression | t.SpreadElement>[] = [];
 
               propertiesPaths.forEach(propertyPath => {
                 if (propertyPath.isObjectMethod()) {
@@ -231,7 +287,7 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
                   }
 
                   if (valuePath.isExpression()) {
-                    lazyProperties.push(valuePath);
+                    lazyPaths.push(valuePath);
                     return;
                   }
 
@@ -239,14 +295,14 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
                 }
 
                 if (propertyPath.isSpreadElement()) {
-                  lazySpreads.push(propertyPath);
+                  lazyPaths.push(propertyPath);
                   return;
                 }
 
                 throw new Error(/* TODO */);
               });
 
-              if (lazyProperties.length === 0 && lazySpreads.length === 0) {
+              if (lazyPaths.length === 0) {
                 state.styleNodes?.push({
                   kind: 'PURE_OBJECT',
                   nodePath: stylesPath,
@@ -257,9 +313,7 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
               state.styleNodes?.push({
                 kind: 'LAZY_OBJECT',
                 nodePath: stylesPath,
-
-                propertyPaths: lazyProperties,
-                spreadPaths: lazySpreads,
+                lazyPaths,
               });
               return;
             }
@@ -324,12 +378,7 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
             }
           }
 
-          if (styleSlot.isSpreadElement()) {
-            extracted(styleSlot, p, state.file.opts.filename);
-            return;
-          }
-
-          throw new Error();
+          throw new Error(/* TODO */);
         });
       },
     },
