@@ -7,7 +7,8 @@ export const useStyles = prebuildStyles({
     paddingBottom: ['', 'f1y2xyjm', '.f1y2xyjm{padding-bottom:4px;}'],
     paddingLeft: ['', 'fycuoez0', '.fycuoez0{padding-left:4px;}', '.rfycuoez0{padding-right:4px;}'],
   },
-  rootPrimary: {
-    color: ['', 'f163i14w', '.f163i14w{color:blue;}'],
+  icon: {
+    background: ['', 'f65sxns0', '.f65sxns0{background:green;}'],
+    marginLeft: ['', 'fjf1xye0', '.fjf1xye0{margin-left:4px;}', '.rfjf1xye0{margin-right:4px;}'],
   },
 });

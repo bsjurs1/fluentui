@@ -1,11 +1,7 @@
 import { makeStyles } from '@fluentui/react-make-styles';
+import { sharedStyles } from './mixins';
 
 export const useStyles = makeStyles({
-  root: {
-    color: 'red',
-    padding: '4px',
-  },
-  rootPrimary: {
-    color: 'blue',
-  },
+  ...sharedStyles,
+  icon: { color: 'red' },
 });

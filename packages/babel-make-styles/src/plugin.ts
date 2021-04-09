@@ -73,7 +73,7 @@ function namesToCssVariable(names: string[]): string {
 const evaluator: Evaluator = (filename, options, text) => {
   const { code } = Babel.transformSync(text, {
     filename: filename,
-    presets: ['@babel/preset-env'],
+    presets: ['@babel/preset-env', '@babel/preset-typescript'],
   })!;
   return [code!, null];
 };
@@ -188,7 +188,11 @@ function extracted(stylesPath: NodePath<t.ObjectExpression>, p: NodePath<t.Progr
 
   if (!result.confident) {
     hoist(Babel, stylesPath as NodePath<t.Expression | null>);
-    const hoistedExNode = t.cloneNode(stylesPath.node);
+    let hoistedExNode = t.cloneNode(stylesPath.node);
+
+    if (stylesPath.isSpreadElement()) {
+      hoistedExNode = t.objectExpression([hoistedExNode]);
+    }
 
     console.log(generator(hoistedExNode).code);
 
@@ -294,80 +298,89 @@ export const babelPlugin = declare<never, Babel.PluginObj<BabelPluginState>>(api
         const styleSlots = definitionsPath.get('properties');
 
         styleSlots.forEach(styleSlot => {
-          if (!styleSlot.isObjectProperty()) {
-            throw new Error();
-          }
+          if (styleSlot.isObjectProperty()) {
+            const stylesPath = styleSlot.get('value');
 
-          const stylesPath = styleSlot.get('value');
+            if (stylesPath.isObjectExpression()) {
+              state.styleNodes?.push({
+                kind: 'PURE',
+                nodePath: stylesPath,
+              });
 
-          if (stylesPath.isObjectExpression()) {
-            state.styleNodes?.push({
-              kind: 'PURE',
-              nodePath: stylesPath,
-            });
+              extracted(stylesPath, p, state.file.opts.filename);
+              return;
+            }
 
-            extracted(stylesPath, p, state.file.opts.filename);
-            return;
-          }
+            if (stylesPath.isIdentifier()) {
+              extracted(stylesPath, p, state.file.opts.filename);
+            }
 
-          if (stylesPath.isArrowFunctionExpression()) {
-            if (stylesPath.get('params').length === 0) {
-              // skip
-            } else if (stylesPath.get('params').length > 1) {
-              throw new Error('111');
-            } else {
-              const paramsPath = stylesPath.get('params.0') as NodePath<t.Node>;
-
-              if (!paramsPath.isIdentifier()) {
+            if (stylesPath.isArrowFunctionExpression()) {
+              if (stylesPath.get('params').length === 0) {
+                // skip
+              } else if (stylesPath.get('params').length > 1) {
                 throw new Error('111');
-              }
+              } else {
+                const paramsPath = stylesPath.get('params.0') as NodePath<t.Node>;
 
-              const paramsName: string = paramsPath.get('name').node;
-
-              const bodyPath = stylesPath.get('body');
-
-              if (!bodyPath.isObjectExpression()) {
-                throw new Error('111');
-              }
-
-              const properties = bodyPath.get('properties');
-
-              properties.forEach(property => {
-                if (!property.isObjectProperty()) {
+                if (!paramsPath.isIdentifier()) {
                   throw new Error('111');
                 }
 
-                const valuePath = property.get('value');
+                const paramsName: string = paramsPath.get('name').node;
 
-                if (valuePath.isStringLiteral() || valuePath.isNullLiteral() || valuePath.isNumericLiteral()) {
-                  return;
+                const bodyPath = stylesPath.get('body');
+
+                if (!bodyPath.isObjectExpression()) {
+                  throw new Error('111');
                 }
 
-                if (valuePath.isMemberExpression()) {
-                  const identifierPath = getMemberExpressionIdentifier(valuePath);
+                const properties = bodyPath.get('properties');
 
-                  if (identifierPath.isIdentifier({ name: paramsName })) {
-                    const cssVariable = namesToCssVariable(getMemberExpressionNames(valuePath));
-
-                    valuePath.replaceWith(t.stringLiteral(cssVariable));
+                properties.forEach(property => {
+                  if (!property.isObjectProperty()) {
+                    throw new Error('111');
                   }
 
-                  return;
-                }
+                  const valuePath = property.get('value');
 
-                if (valuePath.isArrayExpression()) {
+                  if (valuePath.isStringLiteral() || valuePath.isNullLiteral() || valuePath.isNumericLiteral()) {
+                    return;
+                  }
+
+                  if (valuePath.isMemberExpression()) {
+                    const identifierPath = getMemberExpressionIdentifier(valuePath);
+
+                    if (identifierPath.isIdentifier({ name: paramsName })) {
+                      const cssVariable = namesToCssVariable(getMemberExpressionNames(valuePath));
+
+                      valuePath.replaceWith(t.stringLiteral(cssVariable));
+                    }
+
+                    return;
+                  }
+
+                  if (valuePath.isArrayExpression()) {
+                    throw new Error();
+                  }
+
                   throw new Error();
-                }
+                });
 
-                throw new Error();
-              });
+                stylesPath.replaceWith(bodyPath);
+                extracted(stylesPath, p, state.file.opts.filename);
 
-              stylesPath.replaceWith(bodyPath);
-              extracted(stylesPath, p, state.file.opts.filename);
-
-              return;
+                return;
+              }
             }
           }
+
+          if (styleSlot.isSpreadElement()) {
+            extracted(styleSlot, p, state.file.opts.filename);
+            return;
+          }
+
+          throw new Error();
         });
       },
     },
