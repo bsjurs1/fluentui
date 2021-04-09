@@ -227,7 +227,7 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
 
         styleSlots.forEach(styleSlotPath => {
           /**
-           * Needs context-aware lazy evaluation anyway.
+           * Needs lazy evaluation anyway.
            *
            * @example makeStyles({ ...SOME_STYLES })
            */
@@ -250,7 +250,7 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
             const stylesPath = styleSlotPath.get('value');
 
             /**
-             * Needs context-aware lazy evaluation anyway.
+             * Needs lazy evaluation anyway.
              *
              * @example makeStyles({ root: SOME_VARIABLE })
              */
@@ -263,12 +263,12 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
             }
 
             /**
-             * May need context-aware lazy evaluation in less optimistic scenarios.
+             * May need lazy evaluation in less optimistic scenarios.
              *
              * @example
-             *    makeStyles({ root: { color: 'red' } })
-             *    makeStyles({ root: { color: SOME_VARIABLE } })
-             *    makeStyles({ ...sharedStyles })
+             *    makeStyles({ root: { color: 'red' } }) // ✔ can be resolved in AST
+             *    makeStyles({ root: { color: SOME_VARIABLE } }) // ❌ lazy evaluation
+             *    makeStyles({ ...sharedStyles }) // ❌ lazy evaluation
              */
             if (stylesPath.isObjectExpression()) {
               const propertiesPaths = stylesPath.get('properties');
