@@ -26,7 +26,6 @@
   },
   "dependencies": {
     "@babel/helper-plugin-utils": "^7.12.13",
-    "@babel/types": "^7.12.1",
     "@fluentui/make-styles": "^9.0.0-alpha.9",
     "@linaria/babel": "^3.0.0-beta.0",
     "tslib": "^1.10.0"

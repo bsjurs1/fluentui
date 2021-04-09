@@ -26,16 +26,7 @@ export function astify<T>(literal: T) {
       if (Array.isArray(literal)) {
         return t.arrayExpression(literal.map(astify));
       }
-      console.log(
-        literal,
-        Object.keys(literal)
-          .filter(k => {
-            return typeof literal[k] !== 'undefined';
-          })
-          .map(k => {
-            return t.objectProperty(t.stringLiteral(k), astify(literal[k]));
-          }),
-      );
+
       return t.objectExpression(
         Object.keys(literal)
           .filter(k => {

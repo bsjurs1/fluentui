@@ -1,13 +1,10 @@
-import { NodePath, PluginPass } from '@babel/core';
-import generator from '@babel/generator';
-import { expression, statement } from '@babel/template';
-import * as Babel from '@babel/core';
+import { NodePath, PluginObj, PluginPass, types as t } from '@babel/core';
 import { declare } from '@babel/helper-plugin-utils';
-import * as t from '@babel/types';
-import { resolveStyleRules } from '@fluentui/make-styles';
+import { Module } from '@linaria/babel';
 
+import { evaluatePaths } from './utils/evaluatePaths';
+import { MakeStyles, resolveStyleRules } from '@fluentui/make-styles';
 import { astify } from './utils/astify';
-import { Evaluator, Module, StrictOptions } from '@linaria/babel';
 
 function isMakeStylesCallExpression(expressionPath: NodePath<t.CallExpression>): boolean {
   const callee = expressionPath.get('callee');
@@ -70,184 +67,24 @@ function namesToCssVariable(names: string[]): string {
   return `${variable})`;
 }
 
-const evaluator: Evaluator = (filename, options, text) => {
-  const { code } = Babel.transformSync(text, {
-    filename: filename,
-    presets: ['@babel/preset-env', '@babel/preset-typescript'],
-  })!;
-  return [code!, null];
-};
-
-function findFreeName(scope: Scope, name: string): string {
-  // By default `name` is used as a name of the function …
-  let nextName = name;
-  let idx = 0;
-  while (scope.hasBinding(nextName, false)) {
-    // … but if there is an already defined variable with this name …
-    // … we are trying to use a name like wrap_N
-    idx += 1;
-    nextName = `wrap_${idx}`;
-  }
-
-  return nextName;
-}
-
-function hoist(babel: Core, ex: NodePath<t.Expression | null>) {
-  const Identifier = (idPath: NodePath<t.IdentifierNode>) => {
-    if (!idPath.isReferencedIdentifier()) {
-      return;
+type AstStyleNode =
+  | { kind: 'PURE_OBJECT'; nodePath: NodePath<t.ObjectExpression> }
+  | {
+      kind: 'LAZY_OBJECT';
+      nodePath: NodePath<t.ObjectExpression>;
+      propertyPaths: NodePath<t.Expression>[];
+      spreadPaths: NodePath<t.SpreadElement>[];
     }
+  | { kind: 'LAZY_IDENTIFIER'; nodePath: NodePath<t.Identifier> };
 
-    const binding = idPath.scope.getBinding(idPath.node.name);
-    if (!binding) return;
-    const { scope, path: bindingPath, referencePaths } = binding;
-    // parent here can be null or undefined in different versions of babel
-    if (!scope.parent) {
-      // It's a variable from global scope
-      return;
-    }
-
-    if (bindingPath.isVariableDeclarator()) {
-      const initPath = bindingPath.get('init') as NodePath<t.Expression | null>;
-      hoist(babel, initPath);
-      initPath.hoist(scope);
-      if (initPath.isIdentifier()) {
-        referencePaths.forEach(referencePath => {
-          referencePath.replaceWith(babel.types.identifier(initPath.node.name));
-        });
-      }
-    }
-  };
-
-  if (ex.isIdentifier()) {
-    return Identifier(ex);
-  }
-
-  ex.traverse({
-    Identifier,
-  });
-}
-
-function evaluate(code: string, f: string) {
-  const options: StrictOptions = {
-    displayName: false,
-    evaluate: true,
-
-    rules: [
-      {
-        action: evaluator,
-      },
-      {
-        test: /\/node_modules\//,
-        action: 'ignore',
-      },
-    ],
-    babelOptions: {},
-  };
-  const mod = new Module(f, options);
-  mod.evaluate(code, ['__linariaPreval']);
-
-  return mod.exports['__linariaPreval'];
-}
-
-const expressionWrapperTpl = statement(`
-  const %%wrapName%% = (fn) => {
-    try {
-      return fn();
-    } catch (e) {
-      return e;
-    }
-  };
-`);
-
-const expressionTpl = expression(`%%wrapName%%(() => %%expression%%)`);
-const exportsLinariaPrevalTpl = statement(`exports.__linariaPreval = %%expressions%%`);
-
-function addLinariaPreval(path: NodePath<Program>, lazyDeps: Array<Expression | string>): Program {
-  // Constant __linariaPreval with all dependencies
-  const wrapName = findFreeName(path.scope, '_wrap');
-
-  const statements = [
-    expressionWrapperTpl({ wrapName }),
-    exportsLinariaPrevalTpl({
-      expressions: t.arrayExpression(lazyDeps.map(expression => expressionTpl({ expression, wrapName }))),
-    }),
-  ];
-
-  const programNode = path.node;
-  return t.program(
-    [...programNode.body, ...statements],
-    programNode.directives,
-    programNode.sourceType,
-    programNode.interpreter,
-  );
-}
-
-function extracted(stylesPath: NodePath<t.ObjectExpression>, p: NodePath<t.Program>, f) {
-  const result = stylesPath.evaluate();
-
-  if (!result.confident) {
-    hoist(Babel, stylesPath as NodePath<t.Expression | null>);
-    let hoistedExNode = t.cloneNode(stylesPath.node);
-
-    if (stylesPath.isSpreadElement()) {
-      hoistedExNode = t.objectExpression([hoistedExNode]);
-    }
-
-    console.log(generator(hoistedExNode).code);
-
-    const p1 = addLinariaPreval(p, [hoistedExNode]);
-    const { code } = generator(p1);
-
-    console.log('222', code);
-
-    const results = evaluate(code, f);
-    const result1 = results[0];
-
-    let resolveStyleRules1;
-
-    if (stylesPath.isSpreadElement()) {
-      resolveStyleRules1 = {};
-      Object.keys(result1).forEach(k => {
-        resolveStyleRules1[k] = resolveStyleRules(result1[k]);
-      });
-    } else {
-      resolveStyleRules1 = resolveStyleRules(result1);
-    }
-
-    const replacement = astify(resolveStyleRules1);
-
-    console.log('extracted:result1', result1);
-    console.log('extracted:replacement', replacement);
-    console.log('extracted:resolveStyleRules1', resolveStyleRules1);
-    console.log('extracted:code', generator(replacement).code);
-
-    if (stylesPath.isSpreadElement()) {
-      stylesPath.replaceWithMultiple(replacement.properties);
-    } else {
-      stylesPath.replaceWith(replacement);
-    }
-    // throw new Error('Oops');
-
-    return;
-  }
-
-  const resolvedStyles = resolveStyleRules(result.value);
-  const resolvedStylesAst = astify(resolvedStyles);
-
-  stylesPath.replaceWith(resolvedStylesAst);
-}
-
-type AstStyleNode = { kind: 'PURE'; nodePath: NodePath<t.ObjectExpression> } | { kind: 'LAZY' };
-
-type BabelPluginState = Babel.PluginPass & {
+type BabelPluginState = PluginPass & {
   importDeclarationPath?: NodePath<t.ImportDeclaration>;
 
   /** Contains AST nodes with that should be resolved. */
   styleNodes?: AstStyleNode[];
 };
 
-export const babelPlugin = declare<never, Babel.PluginObj<BabelPluginState>>(api => {
+export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
   api.assertVersion(7);
 
   return {
@@ -259,10 +96,48 @@ export const babelPlugin = declare<never, Babel.PluginObj<BabelPluginState>>(api
 
     visitor: {
       Program: {
+        enter() {
+          // Invalidate cache for module evaluation to get fresh modules
+          Module.invalidate();
+        },
+
         exit(path, state) {
           if (!state.importDeclarationPath) {
             return;
           }
+
+          const pathsToEvaluate = state.styleNodes!.reduce<NodePath<any>[]>((acc, styleNode) => {
+            if (styleNode.kind === 'PURE_OBJECT') {
+              return acc;
+            }
+
+            if (styleNode.kind === 'LAZY_IDENTIFIER') {
+              return [...acc, styleNode.nodePath];
+            }
+
+            if (styleNode.kind === 'LAZY_OBJECT') {
+              return [...acc, ...styleNode.propertyPaths, ...styleNode.spreadPaths];
+            }
+
+            throw new Error(/* TODO */);
+          }, []);
+
+          if (pathsToEvaluate.length > 0) {
+            evaluatePaths(path, state.file.opts.filename!, pathsToEvaluate);
+          }
+
+          state.styleNodes?.forEach(styleNode => {
+            const evaluationResult = styleNode.nodePath.evaluate();
+
+            if (!evaluationResult.confident) {
+              throw new Error(/* TODO */);
+            }
+
+            const styles: MakeStyles = evaluationResult.value;
+            const resolvedStyles = resolveStyleRules(styles);
+
+            styleNode.nodePath.replaceWith(astify(resolvedStyles));
+          });
 
           const specifiers = state.importDeclarationPath.get('specifiers');
 
@@ -324,18 +199,68 @@ export const babelPlugin = declare<never, Babel.PluginObj<BabelPluginState>>(api
           if (styleSlot.isObjectProperty()) {
             const stylesPath = styleSlot.get('value');
 
-            if (stylesPath.isObjectExpression()) {
+            /**
+             * Needs context-aware lazy evaluation anyway.
+             *
+             * @example makeStyles({ root: SOME_VARIABLE })
+             */
+            if (stylesPath.isIdentifier()) {
               state.styleNodes?.push({
-                kind: 'PURE',
+                kind: 'LAZY_IDENTIFIER',
                 nodePath: stylesPath,
               });
-
-              extracted(stylesPath, p, state.file.opts.filename);
               return;
             }
 
-            if (stylesPath.isIdentifier()) {
-              extracted(stylesPath, p, state.file.opts.filename);
+            if (stylesPath.isObjectExpression()) {
+              const propertiesPaths = stylesPath.get('properties');
+
+              const lazyProperties: NodePath<t.Expression>[] = [];
+              const lazySpreads: NodePath<t.SpreadElement>[] = [];
+
+              propertiesPaths.forEach(propertyPath => {
+                if (propertyPath.isObjectMethod()) {
+                  throw new Error(/* TODO */);
+                }
+
+                if (propertyPath.isObjectProperty()) {
+                  const valuePath = propertyPath.get('value');
+
+                  if (valuePath.isStringLiteral() || valuePath.isNullLiteral() || valuePath.isNumericLiteral()) {
+                    return;
+                  }
+
+                  if (valuePath.isExpression()) {
+                    lazyProperties.push(valuePath);
+                    return;
+                  }
+
+                  throw new Error(/* TODO */);
+                }
+
+                if (propertyPath.isSpreadElement()) {
+                  lazySpreads.push(propertyPath);
+                  return;
+                }
+
+                throw new Error(/* TODO */);
+              });
+
+              if (lazyProperties.length === 0 && lazySpreads.length === 0) {
+                state.styleNodes?.push({
+                  kind: 'PURE_OBJECT',
+                  nodePath: stylesPath,
+                });
+                return;
+              }
+
+              state.styleNodes?.push({
+                kind: 'LAZY_OBJECT',
+                nodePath: stylesPath,
+
+                propertyPaths: lazyProperties,
+                spreadPaths: lazySpreads,
+              });
               return;
             }
 
