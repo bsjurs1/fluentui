@@ -10,7 +10,7 @@ pluginTester({
     },
   },
 
-  fixtures: path.join(__dirname, '__fixtures__'),
+  fixtures: path.join(__dirname, '..', '__fixtures__'),
   plugin: babelPlugin,
 
   formatResult: code =>

@@ -1,7 +1,7 @@
-import { NodePath } from '@babel/core';
+import { NodePath, PluginPass } from '@babel/core';
 import generator from '@babel/generator';
 import { expression, statement } from '@babel/template';
-import * as babel from '@babel/core';
+import * as Babel from '@babel/core';
 import { declare } from '@babel/helper-plugin-utils';
 import * as t from '@babel/types';
 import { resolveStyleRules } from '@fluentui/make-styles';
@@ -71,7 +71,7 @@ function namesToCssVariable(names: string[]): string {
 }
 
 const evaluator: Evaluator = (filename, options, text) => {
-  const { code } = babel.transformSync(text, {
+  const { code } = Babel.transformSync(text, {
     filename: filename,
     presets: ['@babel/preset-env'],
   })!;
@@ -187,7 +187,7 @@ function extracted(stylesPath: NodePath<t.ObjectExpression>, p: NodePath<t.Progr
   const result = stylesPath.evaluate();
 
   if (!result.confident) {
-    hoist(babel, stylesPath as NodePath<t.Expression | null>);
+    hoist(Babel, stylesPath as NodePath<t.Expression | null>);
     const hoistedExNode = t.cloneNode(stylesPath.node);
 
     console.log(generator(hoistedExNode).code);
@@ -211,18 +211,43 @@ function extracted(stylesPath: NodePath<t.ObjectExpression>, p: NodePath<t.Progr
   stylesPath.replaceWith(resolvedStylesAst);
 }
 
-export const babelPlugin = declare<{ ooo: any }>(api => {
+type AstStyleNode = { kind: 'PURE'; nodePath: NodePath<t.ObjectExpression> } | { kind: 'LAZY' };
+
+type BabelPluginState = Babel.PluginPass & {
+  importDeclarationPath?: NodePath<t.ImportDeclaration>;
+
+  /** Contains AST nodes with that should be resolved. */
+  styleNodes?: AstStyleNode[];
+};
+
+export const babelPlugin = declare<never, Babel.PluginObj<BabelPluginState>>(api => {
   api.assertVersion(7);
 
   return {
     name: '@fluentui/babel-make-styles',
 
+    pre() {
+      this.styleNodes = [];
+    },
+
     visitor: {
       Program: {
         exit(path, state) {
-          if (state.ooo) {
-            state.ooo.replaceWith(t.identifier('prebuildStyles'));
+          if (!state.importDeclarationPath) {
+            return;
           }
+
+          const specifiers = state.importDeclarationPath.get('specifiers');
+
+          specifiers.forEach(specifier => {
+            if (specifier.isImportSpecifier()) {
+              const imported = specifier.get('imported');
+
+              if (imported.isIdentifier({ name: 'makeStyles' })) {
+                specifier.replaceWith(t.identifier('prebuildStyles'));
+              }
+            }
+          });
 
           if (state.ppp.length > 0) {
             state.ppp.forEach(callee => {
@@ -232,25 +257,19 @@ export const babelPlugin = declare<{ ooo: any }>(api => {
         },
       },
 
-      ImportDeclaration(expressionPath, state) {
-        const source = expressionPath.get('source');
-
-        if (source.isStringLiteral({ value: '@fluentui/react-make-styles' })) {
-          const specifiers = expressionPath.get('specifiers');
-
-          specifiers.forEach(specifier => {
-            if (specifier.isImportSpecifier()) {
-              const imported = specifier.get('imported');
-
-              if (imported.isIdentifier({ name: 'makeStyles' })) {
-                state.ooo = specifier;
-              }
-            }
-          });
+      ImportDeclaration(path, state) {
+        if (path.node.source.value !== '@fluentui/react-make-styles') {
+          return;
         }
+
+        state.importDeclarationPath = path;
       },
 
       CallExpression(expressionPath, state) {
+        if (!state.importDeclarationPath) {
+          return;
+        }
+
         if (!isMakeStylesCallExpression(expressionPath)) {
           return;
         }
@@ -282,6 +301,11 @@ export const babelPlugin = declare<{ ooo: any }>(api => {
           const stylesPath = styleSlot.get('value');
 
           if (stylesPath.isObjectExpression()) {
+            state.styleNodes?.push({
+              kind: 'PURE',
+              nodePath: stylesPath,
+            });
+
             extracted(stylesPath, p, state.file.opts.filename);
             return;
           }
