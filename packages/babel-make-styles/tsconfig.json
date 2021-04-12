@@ -16,5 +16,5 @@
     "lib": ["es2017"],
     "types": ["jest", "node"]
   },
-  "include": ["src"]
+  "include": ["__fixtures__/**/code.ts", "src"]
 }
