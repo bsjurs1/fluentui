@@ -4,10 +4,8 @@ import { expression, statement } from '@babel/template';
 import generator from '@babel/generator';
 
 import { astify } from './astify';
-import traverse from '@babel/traverse';
-import { isMakeStylesCallExpression } from './isMakeStylesCallExpression';
 
-const EVAL_EXPORT_NAME = '__linariaPreval';
+const EVAL_EXPORT_NAME = '__mkPreval';
 
 const evaluator: Evaluator = (filename, options, text) => {
   const { code } = transformSync(text, {
@@ -109,18 +107,18 @@ const expressionWrapperTpl = statement(`
 `);
 
 const expressionTpl = expression(`%%wrapName%%(() => %%expression%%)`);
-const exportsLinariaPrevalTpl = statement(`exports.__linariaPreval = %%expressions%%`);
+const exportsPrevalTpl = statement(`exports.${EVAL_EXPORT_NAME} = %%expressions%%`);
 
-function addLinariaPreval(path: NodePath<t.Program>, lazyDeps: Array<t.Expression | string>): t.Program {
-  // Constant __linariaPreval with all dependencies
+function addPreval(
+  path: NodePath<t.Program>,
+  themeVariableName: string,
+  lazyDeps: Array<t.Expression | string>,
+): t.Program {
+  // Constant __mkPreval with all dependencies
   const wrapName = findFreeName(path.scope, '_wrap');
 
-  const statements = [
-    expressionWrapperTpl({ wrapName }),
-    exportsLinariaPrevalTpl({
-      expressions: t.arrayExpression(lazyDeps.map(expression => expressionTpl({ expression, wrapName }))),
-    }),
-  ];
+  const proxyImportName = path.scope.generateUid('createCSSVariablesProxy');
+  const themeImportName = path.scope.generateUid('webLightTheme');
 
   const programNode = path.node;
 
@@ -128,35 +126,27 @@ function addLinariaPreval(path: NodePath<t.Program>, lazyDeps: Array<t.Expressio
     // Temporary solution to solve "theme" dependency
     [
       t.importDeclaration(
-        [
-          t.importSpecifier(
-            t.identifier('createCSSVariablesProxy'),
-            // TODO: Should use uniq name to avoid collisions
-            t.identifier('createCSSVariablesProxy'),
-          ),
-        ],
+        [t.importSpecifier(t.identifier(proxyImportName), t.identifier('createCSSVariablesProxy'))],
         t.stringLiteral('@fluentui/make-styles'),
       ),
       t.importDeclaration(
-        [
-          t.importSpecifier(
-            t.identifier('webLightTheme'),
-            // TODO: Should use uniq name to avoid collisions
-            t.identifier('webLightTheme'),
-          ),
-        ],
+        [t.importSpecifier(t.identifier(themeImportName), t.identifier('webLightTheme'))],
         t.stringLiteral('@fluentui/react-theme'),
       ),
 
       t.variableDeclaration('const', [
         t.variableDeclarator(
-          t.identifier('theme'),
-          t.callExpression(t.identifier('createCSSVariablesProxy'), [t.identifier('webLightTheme')]),
+          t.identifier(themeVariableName),
+          t.callExpression(t.identifier(proxyImportName), [t.identifier(themeImportName)]),
         ),
       ]),
 
       ...programNode.body,
-      ...statements,
+
+      expressionWrapperTpl({ wrapName }),
+      exportsPrevalTpl({
+        expressions: t.arrayExpression(lazyDeps.map(expression => expressionTpl({ expression, wrapName }))),
+      }),
     ],
     programNode.directives,
     programNode.sourceType,
@@ -165,6 +155,8 @@ function addLinariaPreval(path: NodePath<t.Program>, lazyDeps: Array<t.Expressio
 }
 
 export function evaluatePathsInVM(program: NodePath<t.Program>, filename: string, nodePaths: NodePath<any>[]): void {
+  const themeVariableName = program.scope.generateUid('theme');
+
   const hoistedPathsToEvaluate = nodePaths.map(nodePath => {
     // save original expression that may be changed during hoisting
     const originalNode = t.cloneNode(nodePath.node);
@@ -182,18 +174,17 @@ export function evaluatePathsInVM(program: NodePath<t.Program>, filename: string
     }
 
     if (nodePath.isArrowFunctionExpression()) {
-      return t.callExpression(hoistedNode, [t.identifier('theme')]);
+      return t.callExpression(hoistedNode, [t.identifier(themeVariableName)]);
     }
 
     return hoistedNode;
   });
 
-  const modifiedProgram = addLinariaPreval(program, hoistedPathsToEvaluate);
+  const modifiedProgram = addPreval(program, themeVariableName, hoistedPathsToEvaluate);
 
   const { code } = generator(modifiedProgram);
-  console.log('CODE', code);
   const results = evaluate(code, filename);
-  console.log('RESULTS', results);
+
   for (let i = 0; i < nodePaths.length; i++) {
     const nodePath1 = nodePaths[i];
 

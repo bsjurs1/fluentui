@@ -139,7 +139,7 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
               Object.keys(stylesBySlots).forEach(slotName => {
                 resolvedStyles[slotName] = resolveStyleRules(stylesBySlots[slotName]);
               });
-              console.log(resolvedStyles);
+
               nodePath.replaceWithMultiple(astify(resolvedStyles).properties);
 
               return;
@@ -406,15 +406,23 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
                   return;
                 }
 
-                stylesPath.replaceWith(bodyPath);
                 state.styleNodes?.push({
-                  kind: 'LAZY_OBJECT',
-                  // 👇 as we replaced an arrow function with its body, we can cast typings
-                  nodePath: (stylesPath as unknown) as NodePath<t.ObjectExpression>,
-                  lazyPaths,
+                  kind: 'LAZY_FUNCTION',
+                  nodePath: stylesPath,
                 });
-
                 return;
+
+                // TODO: this can be lazy object once we will implement nested lookup, see object path for reference
+
+                // stylesPath.replaceWith(bodyPath);
+                // state.styleNodes?.push({
+                //   kind: 'LAZY_OBJECT',
+                //   // 👇 as we replaced an arrow function with its body, we can cast typings
+                //   nodePath: (stylesPath as unknown) as NodePath<t.ObjectExpression>,
+                //   lazyPaths,
+                // });
+                //
+                // return;
               }
 
               state.styleNodes?.push({
