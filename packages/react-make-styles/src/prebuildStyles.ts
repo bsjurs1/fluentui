@@ -4,7 +4,7 @@ import { Theme } from '@fluentui/react-theme';
 
 import { useRenderer } from './useRenderer';
 
-export function makeStyles<Slots extends string>(stylesBySlots: Record<Slots, MakeStylesStyleRule<Theme>>) {
+export function prebuildStyles<Slots extends string>(stylesBySlots: Record<Slots, MakeStylesStyleRule<Theme>>) {
   const getStyles = vanillaPrebuildStyles(stylesBySlots);
 
   if (process.env.NODE_ENV === 'test') {

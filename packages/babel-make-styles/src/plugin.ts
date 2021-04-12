@@ -176,6 +176,7 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
               const imported = specifier.get('imported');
 
               if (imported.isIdentifier({ name: 'makeStyles' })) {
+                // TODO: should use generated modifier to avoid collisions
                 specifier.replaceWith(t.identifier('prebuildStyles'));
               }
             }
@@ -206,7 +207,6 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
           return;
         }
 
-        const p = expressionPath.findParent(p => p.isProgram());
         const args = expressionPath.get('arguments');
         const hasValidArgument = Array.isArray(args) && args.length === 1;
 
@@ -318,63 +318,106 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
               return;
             }
 
+            /**
+             * A scenario when slots styles are represented by functions, in the worst case fallbacks to lazy
+             * evaluation.
+             *
+             * @example
+             *    // ✔ can be resolved in AST
+             *    makeStyles({ root: (t) => ({ color: t.red }) })
+             *    // ❌ lazy evaluation
+             *    makeStyles({ root: (t) => ({ color: SOME_VARIABLE }) })
+             *    // ❌ lazy evaluation, the worst case as function contains body
+             *    makeStyles({ root: (t) => { return { color: SOME_VARIABLE } } })
+             */
             if (stylesPath.isArrowFunctionExpression()) {
-              if (stylesPath.get('params').length === 0) {
-                // skip
-              } else if (stylesPath.get('params').length > 1) {
-                throw new Error('111');
-              } else {
-                const paramsPath = stylesPath.get('params.0') as NodePath<t.Node>;
+              if (stylesPath.get('params').length > 1) {
+                throw new Error(/* TODO */);
+              }
 
-                if (!paramsPath.isIdentifier()) {
-                  throw new Error('111');
-                }
+              const paramsPath = stylesPath.get('params.0') as NodePath<t.Node>;
 
-                const paramsName: string = paramsPath.get('name').node;
+              if (!paramsPath.isIdentifier()) {
+                throw new Error(/* TODO */);
+              }
 
-                const bodyPath = stylesPath.get('body');
+              const paramsName = paramsPath.node.name;
+              const bodyPath = stylesPath.get('body');
 
-                if (!bodyPath.isObjectExpression()) {
-                  throw new Error('111');
-                }
+              /**
+               * Optimistic case, we may not need to use lazy evaluation 🚀
+               *
+               * @example
+               *    // ✔ can be resolved in AST
+               *    makeStyles({ root: (t) => ({ color: t.red }) })
+               *    // ❌ lazy evaluation
+               *    makeStyles({ root: (t) => ({ color: SOME_VARIABLE }) })
+               */
+              if (bodyPath.isObjectExpression()) {
+                const propertiesPaths = bodyPath.get('properties');
+                const lazyPaths: NodePath<t.Expression | t.SpreadElement>[] = [];
 
-                const properties = bodyPath.get('properties');
-
-                properties.forEach(property => {
-                  if (!property.isObjectProperty()) {
-                    throw new Error('111');
+                propertiesPaths.forEach(propertyPath => {
+                  if (propertyPath.isObjectMethod()) {
+                    throw new Error(/* TODO */);
                   }
 
-                  const valuePath = property.get('value');
+                  if (propertyPath.isObjectProperty()) {
+                    const valuePath = propertyPath.get('value');
 
-                  if (valuePath.isStringLiteral() || valuePath.isNullLiteral() || valuePath.isNumericLiteral()) {
-                    return;
-                  }
-
-                  if (valuePath.isMemberExpression()) {
-                    const identifierPath = getMemberExpressionIdentifier(valuePath);
-
-                    if (identifierPath.isIdentifier({ name: paramsName })) {
-                      const cssVariable = namesToCssVariable(getMemberExpressionNames(valuePath));
-
-                      valuePath.replaceWith(t.stringLiteral(cssVariable));
+                    if (valuePath.isStringLiteral() || valuePath.isNullLiteral() || valuePath.isNumericLiteral()) {
+                      return;
                     }
 
+                    if (valuePath.isMemberExpression()) {
+                      const identifierPath = getMemberExpressionIdentifier(valuePath);
+
+                      if (identifierPath.isIdentifier({ name: paramsName })) {
+                        const cssVariable = namesToCssVariable(getMemberExpressionNames(valuePath));
+
+                        valuePath.replaceWith(t.stringLiteral(cssVariable));
+                      }
+
+                      return;
+                    }
+
+                    if (valuePath.isExpression()) {
+                      lazyPaths.push(valuePath);
+                      return;
+                    }
+
+                    throw new Error(/* TODO */);
+                  }
+
+                  if (propertyPath.isSpreadElement()) {
+                    lazyPaths.push(propertyPath);
                     return;
                   }
 
-                  if (valuePath.isArrayExpression()) {
-                    throw new Error();
-                  }
-
-                  throw new Error();
+                  throw new Error(/* TODO */);
                 });
 
-                stylesPath.replaceWith(bodyPath);
-                extracted(stylesPath, p, state.file.opts.filename);
+                if (lazyPaths.length === 0) {
+                  stylesPath.replaceWith(bodyPath);
+
+                  state.styleNodes?.push({
+                    kind: 'PURE_OBJECT',
+                    nodePath: bodyPath,
+                  });
+                  return;
+                }
+
+                throw new Error();
+                state.styleNodes?.push({
+                  kind: 'LAZY_OBJECT',
+                  nodePath: stylesPath,
+                  lazyPaths,
+                });
 
                 return;
               }
+
+              throw new Error(/* TODO */);
             }
           }
 
