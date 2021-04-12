@@ -1,7 +1,7 @@
 import pluginTester, { prettierFormatter } from 'babel-plugin-tester';
 import * as path from 'path';
 
-import babelPlugin from './plugin';
+import { plugin } from './plugin';
 
 pluginTester({
   babelOptions: {
@@ -11,7 +11,7 @@ pluginTester({
   },
 
   fixtures: path.join(__dirname, '..', '__fixtures__'),
-  plugin: babelPlugin,
+  plugin,
 
   formatResult: code =>
     prettierFormatter(code, {

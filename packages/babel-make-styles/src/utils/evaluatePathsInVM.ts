@@ -182,7 +182,7 @@ export function evaluatePathsInVM(
       return t.objectExpression([hoistedNode as t.SpreadElement]);
     }
 
-    if (nodePath.isArrowFunctionExpression()) {
+    if (nodePath.isArrowFunctionExpression() || nodePath.isFunctionExpression()) {
       return t.callExpression(hoistedNode as t.ArrowFunctionExpression, [t.identifier(themeVariableName)]);
     }
 

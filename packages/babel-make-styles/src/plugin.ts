@@ -71,7 +71,7 @@ type AstStyleNode =
       nodePath: NodePath<t.ObjectExpression>;
       lazyPaths: NodePath<t.Expression | t.SpreadElement>[];
     }
-  | { kind: 'LAZY_FUNCTION'; nodePath: NodePath<t.ArrowFunctionExpression> }
+  | { kind: 'LAZY_FUNCTION'; nodePath: NodePath<t.ArrowFunctionExpression | t.FunctionExpression> }
   | { kind: 'LAZY_IDENTIFIER'; nodePath: NodePath<t.Identifier> }
   | { kind: 'SPREAD'; nodePath: NodePath<t.SpreadElement>; spreadPath: NodePath<t.SpreadElement> };
 
@@ -85,7 +85,7 @@ type BabelPluginState = PluginPass & {
   styleNodes?: AstStyleNode[];
 };
 
-export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
+export const plugin = declare<never, PluginObj<BabelPluginState>>(api => {
   api.assertVersion(7);
 
   return {
@@ -453,6 +453,21 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
               });
               return;
             }
+
+            /**
+             * A scenario when slots styles are represented by functions with body, fallbacks to lazy evaluation.
+             *
+             * @example
+             *    // ❌ lazy evaluation
+             *    makeStyles({ root: function (t) { return { color: SOME_VARIABLE } } })
+             */
+            if (stylesPath.isFunctionExpression()) {
+              state.styleNodes?.push({
+                kind: 'LAZY_FUNCTION',
+                nodePath: stylesPath,
+              });
+              return;
+            }
           }
 
           throw new Error(/* TODO */);
@@ -461,5 +476,3 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
     },
   };
 });
-
-export default babelPlugin;
