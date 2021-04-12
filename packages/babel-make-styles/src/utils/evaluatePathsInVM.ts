@@ -1,5 +1,6 @@
 import { Evaluator, Module, StrictOptions } from '@linaria/babel';
 import { NodePath, transformSync, types as t } from '@babel/core';
+import { Scope } from '@babel/traverse';
 import { expression, statement } from '@babel/template';
 import generator from '@babel/generator';
 
@@ -190,7 +191,7 @@ export function evaluatePathsInVM(program: NodePath<t.Program>, filename: string
 
     /* TODO */
     if (nodePath1.isSpreadElement()) {
-      nodePath1.replaceWithMultiple(astify(results[i]).properties);
+      nodePath1.replaceWithMultiple((astify(results[i]) as t.ObjectExpression).properties);
       continue;
     }
 

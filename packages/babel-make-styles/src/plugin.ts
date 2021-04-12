@@ -3,10 +3,9 @@ import { declare } from '@babel/helper-plugin-utils';
 import { Module } from '@linaria/babel';
 
 import { evaluatePaths } from './utils/evaluatePaths';
-import { MakeStyles, resolveStyleRules } from '@fluentui/make-styles';
+import { MakeStyles, ResolvedStylesBySlots, resolveStyleRules } from '@fluentui/make-styles';
 import { astify } from './utils/astify';
 import generator from '@babel/generator';
-import { isMakeStylesCallExpression } from './utils/isMakeStylesCallExpression';
 
 function getMemberExpressionIdentifier(expressionPath: NodePath<t.MemberExpression>): NodePath<t.Identifier> {
   const objectPath = expressionPath.get('object');
@@ -20,6 +19,16 @@ function getMemberExpressionIdentifier(expressionPath: NodePath<t.MemberExpressi
   }
 
   throw new Error('!!!');
+}
+
+function isMakeStylesCallExpression(
+  expressionPath: NodePath<t.Expression | t.V8IntrinsicIdentifier>,
+): expressionPath is NodePath<t.Identifier> {
+  if (expressionPath.isIdentifier()) {
+    return expressionPath.referencesImport('@fluentui/react-make-styles', 'makeStyles');
+  }
+
+  return false;
 }
 
 function getMemberExpressionNames(expressionPath: NodePath<t.MemberExpression>, result: string[] = []): string[] {
@@ -69,6 +78,9 @@ type AstStyleNode =
 type BabelPluginState = PluginPass & {
   importDeclarationPath?: NodePath<t.ImportDeclaration>;
 
+  /** Contains all paths to calls of makeStyles(). */
+  calleePaths?: NodePath<t.Identifier>[];
+
   /** Contains AST nodes with that should be resolved. */
   styleNodes?: AstStyleNode[];
 };
@@ -80,6 +92,7 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
     name: '@fluentui/babel-make-styles',
 
     pre() {
+      this.calleePaths = [];
       this.styleNodes = [];
     },
 
@@ -123,7 +136,7 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
             const nodePath = styleNode.nodePath;
 
             if (styleNode.kind === 'SPREAD') {
-              const evaluationResult = nodePath.get('argument').evaluate();
+              const evaluationResult = (nodePath.get('argument') as NodePath<t.Expression>).evaluate();
 
               if (!evaluationResult.confident) {
                 console.log('styleNode.kind', styleNode.kind);
@@ -134,13 +147,13 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
               }
 
               const stylesBySlots: Record<string, MakeStyles> = evaluationResult.value;
-              const resolvedStyles = {};
+              const resolvedStyles: ResolvedStylesBySlots<string> = {};
 
               Object.keys(stylesBySlots).forEach(slotName => {
                 resolvedStyles[slotName] = resolveStyleRules(stylesBySlots[slotName]);
               });
 
-              nodePath.replaceWithMultiple(astify(resolvedStyles).properties);
+              nodePath.replaceWithMultiple((astify(resolvedStyles) as t.ObjectExpression).properties);
 
               return;
             }
@@ -174,9 +187,9 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
             }
           });
 
-          if (state.ppp.length > 0) {
-            state.ppp.forEach(callee => {
-              callee.replaceWith(t.identifier('prebuildStyles'));
+          if (state.calleePaths!.length > 0) {
+            state.calleePaths!.forEach(calleePath => {
+              calleePath.replaceWith(t.identifier('prebuildStyles'));
             });
           }
         },
@@ -195,7 +208,9 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
           return;
         }
 
-        if (!isMakeStylesCallExpression(expressionPath)) {
+        const calleePath = expressionPath.get('callee');
+
+        if (!isMakeStylesCallExpression(calleePath)) {
           return;
         }
 
@@ -206,13 +221,12 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
           throw new Error();
         }
 
-        state.ppp = state.ppp || [];
-        state.ppp.push(expressionPath.get('callee'));
+        state.calleePaths!.push(calleePath);
 
         const definitionsPath = expressionPath.get('arguments.0') as NodePath<t.Node>;
 
         if (!definitionsPath.isObjectExpression()) {
-          throw new Error();
+          throw new Error(/* TODO */);
         }
 
         const styleSlots = definitionsPath.get('properties');
@@ -224,6 +238,7 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
            * @example makeStyles({ ...SOME_STYLES })
            */
           if (styleSlotPath.isSpreadElement()) {
+            // TODO: Document this plz
             const spreadArgument = styleSlotPath.get('argument');
             const clone = t.cloneNode(spreadArgument.node);
             const wrappingSpreadArgument = t.objectExpression([t.spreadElement(clone)]);
@@ -233,7 +248,7 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
             state.styleNodes?.push({
               kind: 'SPREAD',
               nodePath: styleSlotPath,
-              spreadPath: styleSlotPath.get('argument.properties.0'),
+              spreadPath: styleSlotPath.get('argument.properties.0') as NodePath<t.SpreadElement>,
             });
             return;
           }

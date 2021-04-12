@@ -1,19 +1,22 @@
-import * as t from '@babel/types';
-import * as babylon from '@babel/parser';
-import traverse from '@babel/traverse';
+import { types as t } from '@babel/core';
 
-export function astify<T>(literal: T) {
+export function astify<T>(
+  literal: T,
+):
+  | t.NullLiteral
+  | t.NumericLiteral
+  | t.StringLiteral
+  | t.BooleanLiteral
+  | t.UnaryExpression
+  | t.ArrayExpression
+  | t.ObjectExpression {
   if (literal === null) {
     return t.nullLiteral();
   }
 
   switch (typeof literal) {
     case 'function':
-      const ast = babylon.parse(literal.toString(), {
-        allowReturnOutsideFunction: true,
-        allowSuperOutsideMethod: true,
-      });
-      return traverse.removeProperties(ast);
+      throw new Error(/* TODO */);
     case 'number':
       return t.numericLiteral(literal);
     case 'string':
@@ -29,12 +32,8 @@ export function astify<T>(literal: T) {
 
       return t.objectExpression(
         Object.keys(literal)
-          .filter(k => {
-            return typeof literal[k] !== 'undefined';
-          })
-          .map(k => {
-            return t.objectProperty(t.stringLiteral(k), astify(literal[k]));
-          }),
+          .filter(k => typeof (literal as Record<string, any>)[k] !== 'undefined')
+          .map(k => t.objectProperty(t.stringLiteral(k), astify((literal as Record<string, any>)[k]))),
       );
   }
 }

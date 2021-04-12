@@ -6,7 +6,7 @@ import babelPlugin from './plugin';
 pluginTester({
   babelOptions: {
     parserOpts: {
-      plugins: [['typescript', { isTsx: false }]],
+      plugins: ['typescript'],
     },
   },
 

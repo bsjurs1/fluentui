@@ -21,14 +21,15 @@
     "@fluentui/eslint-plugin": "^1.1.0",
     "@fluentui/react-make-styles": "^9.0.0-alpha.19",
     "@fluentui/scripts": "^1.0.0",
-    "@types/babel__helper-plugin-utils": "^7.10.0",
-    "babel-plugin-tester": "^10.0.0"
+    "@types/babel__helper-plugin-utils": "7.10.0",
+    "babel-plugin-tester": "^10.0.0",
+    "typescript": "^4.2.4"
   },
   "dependencies": {
     "@babel/helper-plugin-utils": "^7.12.13",
     "@fluentui/make-styles": "^9.0.0-alpha.9",
     "@linaria/babel": "^3.0.0-beta.0",
-    "tslib": "^1.10.0"
+    "tslib": "^2.2.0"
   },
   "beachball": {
     "tag": "alpha",
