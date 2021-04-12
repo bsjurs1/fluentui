@@ -1,7 +1,7 @@
 import { Evaluator, Module, StrictOptions } from '@linaria/babel';
 import { NodePath, transformSync, types as t } from '@babel/core';
 import { Scope } from '@babel/traverse';
-import { expression, statement } from '@babel/template';
+import * as template from '@babel/template';
 import generator from '@babel/generator';
 
 import { astify } from './astify';
@@ -66,7 +66,11 @@ function hoist(ex: NodePath<t.Expression | null>) {
     }
 
     const binding = idPath.scope.getBinding(idPath.node.name);
-    if (!binding) return;
+
+    if (!binding) {
+      return;
+    }
+
     const { scope, path: bindingPath, referencePaths } = binding;
     // parent here can be null or undefined in different versions of babel
     if (!scope.parent) {
@@ -97,7 +101,7 @@ function hoist(ex: NodePath<t.Expression | null>) {
   });
 }
 
-const expressionWrapperTpl = statement(`
+const expressionWrapperTpl = template.statement(`
   const %%wrapName%% = (fn) => {
     try {
       return fn();
@@ -107,13 +111,13 @@ const expressionWrapperTpl = statement(`
   };
 `);
 
-const expressionTpl = expression(`%%wrapName%%(() => %%expression%%)`);
-const exportsPrevalTpl = statement(`exports.${EVAL_EXPORT_NAME} = %%expressions%%`);
+const expressionTpl = template.expression(`%%wrapName%%(() => %%expression%%)`);
+const exportsPrevalTpl = template.statement(`exports.${EVAL_EXPORT_NAME} = %%expressions%%`);
 
 function addPreval(
   path: NodePath<t.Program>,
   themeVariableName: string,
-  lazyDeps: Array<t.Expression | string>,
+  lazyDeps: Array<t.Expression | t.SpreadElement>,
 ): t.Program {
   // Constant __mkPreval with all dependencies
   const wrapName = findFreeName(path.scope, '_wrap');
@@ -155,7 +159,11 @@ function addPreval(
   );
 }
 
-export function evaluatePathsInVM(program: NodePath<t.Program>, filename: string, nodePaths: NodePath<any>[]): void {
+export function evaluatePathsInVM(
+  program: NodePath<t.Program>,
+  filename: string,
+  nodePaths: NodePath<t.Expression | t.SpreadElement>[],
+): void {
   const themeVariableName = program.scope.generateUid('theme');
 
   const hoistedPathsToEvaluate = nodePaths.map(nodePath => {
@@ -171,11 +179,11 @@ export function evaluatePathsInVM(program: NodePath<t.Program>, filename: string
     nodePath.replaceWith(originalNode);
 
     if (nodePath.isSpreadElement()) {
-      return t.objectExpression([hoistedNode]);
+      return t.objectExpression([hoistedNode as t.SpreadElement]);
     }
 
     if (nodePath.isArrowFunctionExpression()) {
-      return t.callExpression(hoistedNode, [t.identifier(themeVariableName)]);
+      return t.callExpression(hoistedNode as t.ArrowFunctionExpression, [t.identifier(themeVariableName)]);
     }
 
     return hoistedNode;

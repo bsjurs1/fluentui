@@ -32,8 +32,8 @@ export function astify<T>(
 
       return t.objectExpression(
         Object.keys(literal)
-          .filter(k => typeof (literal as Record<string, any>)[k] !== 'undefined')
-          .map(k => t.objectProperty(t.stringLiteral(k), astify((literal as Record<string, any>)[k]))),
+          .filter(k => typeof (literal as Record<string, unknown>)[k] !== 'undefined')
+          .map(k => t.objectProperty(t.stringLiteral(k), astify((literal as Record<string, unknown>)[k]))),
       );
   }
 }

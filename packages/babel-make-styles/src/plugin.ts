@@ -108,25 +108,28 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
             return;
           }
 
-          const pathsToEvaluate = state.styleNodes!.reduce<NodePath<any>[]>((acc, styleNode) => {
-            if (styleNode.kind === 'LAZY_IDENTIFIER' || styleNode.kind === 'LAZY_FUNCTION') {
-              return [...acc, styleNode.nodePath];
-            }
+          const pathsToEvaluate = state.styleNodes!.reduce<NodePath<t.Expression | t.SpreadElement>[]>(
+            (acc, styleNode) => {
+              if (styleNode.kind === 'LAZY_IDENTIFIER' || styleNode.kind === 'LAZY_FUNCTION') {
+                return [...acc, styleNode.nodePath];
+              }
 
-            if (styleNode.kind === 'LAZY_OBJECT') {
-              return [...acc, ...styleNode.lazyPaths];
-            }
+              if (styleNode.kind === 'LAZY_OBJECT') {
+                return [...acc, ...styleNode.lazyPaths];
+              }
 
-            if (styleNode.kind === 'PURE_OBJECT') {
-              return acc;
-            }
+              if (styleNode.kind === 'PURE_OBJECT') {
+                return acc;
+              }
 
-            if (styleNode.kind === 'SPREAD') {
-              return [...acc, styleNode.spreadPath];
-            }
+              if (styleNode.kind === 'SPREAD') {
+                return [...acc, styleNode.spreadPath];
+              }
 
-            throw new Error(/* TODO */);
-          }, []);
+              throw new Error(/* TODO */);
+            },
+            [],
+          );
 
           if (pathsToEvaluate.length > 0) {
             evaluatePaths(path, state.file.opts.filename!, pathsToEvaluate);
@@ -136,6 +139,7 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
             const nodePath = styleNode.nodePath;
 
             if (styleNode.kind === 'SPREAD') {
+              // eslint-disable-next-line no-shadow
               const evaluationResult = (nodePath.get('argument') as NodePath<t.Expression>).evaluate();
 
               if (!evaluationResult.confident) {
@@ -147,6 +151,7 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
               }
 
               const stylesBySlots: Record<string, MakeStyles> = evaluationResult.value;
+              // eslint-disable-next-line no-shadow
               const resolvedStyles: ResolvedStylesBySlots<string> = {};
 
               Object.keys(stylesBySlots).forEach(slotName => {
@@ -195,6 +200,7 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
         },
       },
 
+      // eslint-disable-next-line @typescript-eslint/naming-convention
       ImportDeclaration(path, state) {
         if (path.node.source.value !== '@fluentui/react-make-styles') {
           return;
@@ -203,6 +209,7 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
         state.importDeclarationPath = path;
       },
 
+      // eslint-disable-next-line @typescript-eslint/naming-convention
       CallExpression(expressionPath, state) {
         if (!state.importDeclarationPath) {
           return;
