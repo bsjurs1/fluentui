@@ -6,16 +6,7 @@ import { evaluatePaths } from './utils/evaluatePaths';
 import { MakeStyles, resolveStyleRules } from '@fluentui/make-styles';
 import { astify } from './utils/astify';
 import generator from '@babel/generator';
-
-function isMakeStylesCallExpression(expressionPath: NodePath<t.CallExpression>): boolean {
-  const callee = expressionPath.get('callee');
-
-  if (callee.isIdentifier()) {
-    return callee.referencesImport('@fluentui/react-make-styles', 'makeStyles');
-  }
-
-  return false;
-}
+import { isMakeStylesCallExpression } from './utils/isMakeStylesCallExpression';
 
 function getMemberExpressionIdentifier(expressionPath: NodePath<t.MemberExpression>): NodePath<t.Identifier> {
   const objectPath = expressionPath.get('object');
@@ -71,6 +62,7 @@ type AstStyleNode =
       nodePath: NodePath<t.ObjectExpression>;
       lazyPaths: NodePath<t.Expression | t.SpreadElement>[];
     }
+  | { kind: 'LAZY_FUNCTION'; nodePath: NodePath<t.ArrowFunctionExpression> }
   | { kind: 'LAZY_IDENTIFIER'; nodePath: NodePath<t.Identifier> }
   | { kind: 'SPREAD'; nodePath: NodePath<t.SpreadElement>; spreadPath: NodePath<t.SpreadElement> };
 
@@ -104,7 +96,7 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
           }
 
           const pathsToEvaluate = state.styleNodes!.reduce<NodePath<any>[]>((acc, styleNode) => {
-            if (styleNode.kind === 'LAZY_IDENTIFIER') {
+            if (styleNode.kind === 'LAZY_IDENTIFIER' || styleNode.kind === 'LAZY_FUNCTION') {
               return [...acc, styleNode.nodePath];
             }
 
@@ -406,7 +398,6 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
 
                 if (lazyPaths.length === 0) {
                   stylesPath.replaceWith(bodyPath);
-
                   state.styleNodes?.push({
                     kind: 'PURE_OBJECT',
                     // 👇 as we replaced an arrow function with its body, we can cast typings
@@ -415,17 +406,22 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
                   return;
                 }
 
-                throw new Error();
+                stylesPath.replaceWith(bodyPath);
                 state.styleNodes?.push({
                   kind: 'LAZY_OBJECT',
-                  nodePath: stylesPath,
+                  // 👇 as we replaced an arrow function with its body, we can cast typings
+                  nodePath: (stylesPath as unknown) as NodePath<t.ObjectExpression>,
                   lazyPaths,
                 });
 
                 return;
               }
 
-              throw new Error(/* TODO */);
+              state.styleNodes?.push({
+                kind: 'LAZY_FUNCTION',
+                nodePath: stylesPath,
+              });
+              return;
             }
           }
 

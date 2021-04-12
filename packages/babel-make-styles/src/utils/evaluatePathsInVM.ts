@@ -4,6 +4,8 @@ import { expression, statement } from '@babel/template';
 import generator from '@babel/generator';
 
 import { astify } from './astify';
+import traverse from '@babel/traverse';
+import { isMakeStylesCallExpression } from './isMakeStylesCallExpression';
 
 const EVAL_EXPORT_NAME = '__linariaPreval';
 
@@ -123,7 +125,39 @@ function addLinariaPreval(path: NodePath<t.Program>, lazyDeps: Array<t.Expressio
   const programNode = path.node;
 
   return t.program(
-    [...programNode.body, ...statements],
+    // Temporary solution to solve "theme" dependency
+    [
+      t.importDeclaration(
+        [
+          t.importSpecifier(
+            t.identifier('createCSSVariablesProxy'),
+            // TODO: Should use uniq name to avoid collisions
+            t.identifier('createCSSVariablesProxy'),
+          ),
+        ],
+        t.stringLiteral('@fluentui/make-styles'),
+      ),
+      t.importDeclaration(
+        [
+          t.importSpecifier(
+            t.identifier('webLightTheme'),
+            // TODO: Should use uniq name to avoid collisions
+            t.identifier('webLightTheme'),
+          ),
+        ],
+        t.stringLiteral('@fluentui/react-theme'),
+      ),
+
+      t.variableDeclaration('const', [
+        t.variableDeclarator(
+          t.identifier('theme'),
+          t.callExpression(t.identifier('createCSSVariablesProxy'), [t.identifier('webLightTheme')]),
+        ),
+      ]),
+
+      ...programNode.body,
+      ...statements,
+    ],
     programNode.directives,
     programNode.sourceType,
     programNode.interpreter,
@@ -143,14 +177,23 @@ export function evaluatePathsInVM(program: NodePath<t.Program>, filename: string
     // get back original expression to the tree
     nodePath.replaceWith(originalNode);
 
-    return nodePath.isSpreadElement() ? t.objectExpression([hoistedNode]) : hoistedNode;
+    if (nodePath.isSpreadElement()) {
+      return t.objectExpression([hoistedNode]);
+    }
+
+    if (nodePath.isArrowFunctionExpression()) {
+      return t.callExpression(hoistedNode, [t.identifier('theme')]);
+    }
+
+    return hoistedNode;
   });
 
   const modifiedProgram = addLinariaPreval(program, hoistedPathsToEvaluate);
 
   const { code } = generator(modifiedProgram);
+  console.log('CODE', code);
   const results = evaluate(code, filename);
-
+  console.log('RESULTS', results);
   for (let i = 0; i < nodePaths.length; i++) {
     const nodePath1 = nodePaths[i];
 

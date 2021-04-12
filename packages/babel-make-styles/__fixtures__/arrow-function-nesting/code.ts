@@ -1,5 +1,5 @@
 import { makeStyles } from '@fluentui/react-make-styles';
-import { colorBlue } from '../object-nesting/consts';
+import { colorBlue } from './consts';
 
 export const useStyles = makeStyles({
   root: theme => ({
