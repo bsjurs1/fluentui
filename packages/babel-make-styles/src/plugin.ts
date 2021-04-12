@@ -409,7 +409,8 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
 
                   state.styleNodes?.push({
                     kind: 'PURE_OBJECT',
-                    nodePath: bodyPath,
+                    // 👇 as we replaced an arrow function with its body, we can cast typings
+                    nodePath: (stylesPath as unknown) as NodePath<t.ObjectExpression>,
                   });
                   return;
                 }

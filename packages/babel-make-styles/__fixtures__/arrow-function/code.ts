@@ -5,8 +5,6 @@ export const useStyles = makeStyles({
     backgroundColor: theme.global.color.black,
     color: theme.alias.color.blue.border2,
     display: 'flex',
-
-    ':hover': { color: 'red' },
   }),
   rootPrimary: theme => ({ color: theme.alias.color.brand.brandBackground }),
 });
