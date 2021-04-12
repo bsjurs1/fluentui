@@ -286,6 +286,13 @@ export const babelPlugin = declare<never, PluginObj<BabelPluginState>>(api => {
                     return;
                   }
 
+                  // TODO: properly support this case to avoid useless lazy evaluations (as they should be slower).
+                  //       We should use recursive lookup there.
+                  //
+                  // if (valuePath.isObjectExpression()) {
+                  //   return;
+                  // }
+
                   if (valuePath.isExpression()) {
                     lazyPaths.push(valuePath);
                     return;
